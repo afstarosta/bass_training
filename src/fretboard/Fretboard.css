@@ -1,0 +1,171 @@
+.fretboard-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -16px;
+  padding: 4px 16px 10px;
+  scrollbar-color: var(--line) transparent;
+}
+
+.fretboard {
+  display: block;
+  width: 100%;
+  /* Abaixo disso o braço rola na horizontal, mantendo alvos de toque ≥ ~32 px. */
+  min-width: 720px;
+  height: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fretboard .inlay {
+  fill: var(--inlay);
+}
+
+.fretboard .fret-wire {
+  fill: var(--fret);
+}
+
+.fretboard .nut {
+  fill: var(--nut);
+}
+
+.fretboard .string-label {
+  fill: var(--muted);
+  font: 600 14px var(--font-ui);
+  text-anchor: end;
+}
+
+.fretboard .fret-number {
+  fill: var(--muted);
+  font: 500 13px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+.fretboard .fret-number.is-marked {
+  fill: var(--text);
+  font-weight: 700;
+}
+
+/* Alvos clicáveis */
+.fretboard .hit {
+  cursor: pointer;
+  outline: none;
+}
+
+.fretboard .hit rect {
+  fill: transparent;
+}
+
+.fretboard .hit .hover-dot {
+  fill: var(--accent);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+@media (hover: hover) {
+  .fretboard .hit:hover .hover-dot {
+    opacity: 0.38;
+  }
+}
+
+.fretboard .hit:focus-visible .hover-dot {
+  opacity: 0.5;
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.fretboard .hit:active .hover-dot {
+  opacity: 0.6;
+}
+
+/* Marcações de resposta */
+.fretboard .marker {
+  pointer-events: none;
+  animation: marker-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.fretboard .marker text {
+  font: 700 12px var(--font-ui);
+  fill: #fff;
+}
+
+.fretboard .marker-target circle {
+  fill: var(--good);
+  stroke: var(--good-ring);
+  stroke-width: 3;
+}
+
+.fretboard .marker-target {
+  animation: marker-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both, blink 900ms ease-in-out 260ms 2;
+}
+
+.fretboard .marker-guess circle {
+  fill: var(--good-soft);
+  stroke: var(--good);
+  stroke-width: 3;
+}
+
+.fretboard .marker-equivalent circle {
+  fill: var(--equiv-fill);
+  stroke: var(--good);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+.fretboard .marker-equivalent text {
+  fill: var(--good-ring);
+}
+
+.fretboard .marker-wrong circle {
+  fill: var(--bad);
+  stroke: var(--bad-ring);
+  stroke-width: 3;
+}
+
+.fretboard .pulse {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pulse 520ms ease-out forwards;
+}
+
+@keyframes marker-in {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes pulse {
+  from {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fretboard .marker,
+  .fretboard .marker-target,
+  .fretboard .pulse {
+    animation: none;
+  }
+  .fretboard .pulse {
+    opacity: 0;
+  }
+}
