@@ -23,7 +23,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # Quando o package-lock.json estiver no repositório, dá para
+          # acrescentar `cache: npm` aqui (ele exige o lockfile).
 
       # `npm ci` exige package-lock.json. Depois do primeiro `npm install`
       # local, comite o lockfile e este passo passa a usar `npm ci`.
