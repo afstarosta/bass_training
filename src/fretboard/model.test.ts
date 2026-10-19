@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_FRET,
   allPositions,
+  describeInterval,
   describePosition,
   equivalentPositions,
   frequencyAt,
+  intervalName,
   midiToFrequency,
   midiToName,
   openStringFrequency,
@@ -82,5 +84,17 @@ describe('posições', () => {
   it('descrição em português', () => {
     expect(describePosition(positionAt(0, 5))).toBe('corda E, casa 5');
     expect(describePosition(positionAt(1, 0))).toBe('corda A, solta');
+  });
+});
+
+describe('intervalos', () => {
+  it('nomes em português', () => {
+    expect(intervalName(2)).toBe('2ª maior');
+    expect(intervalName(-3)).toBe('3ª menor');
+    expect(intervalName(7)).toBe('5ª justa');
+    expect(intervalName(12)).toBe('oitava');
+    expect(intervalName(15)).toBe('oitava + 3ª menor');
+    expect(describeInterval(33, 35)).toBe('2ª maior ↑');
+    expect(describeInterval(38, 33)).toBe('4ª justa ↓');
   });
 });

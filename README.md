@@ -33,4 +33,16 @@ O workflow `.github/workflows/deploy.yml` roda a cada push na `main`: instala, t
 - O sorteio é uniforme entre todas as posições e nunca repete a mesma posição duas vezes seguidas.
 - Depois da resposta, ou antes de sortear, clicar no braço só toca o som (modo livre).
 
+## Modo avançado
+
+Ligue **Modo avançado** para treinar intervalos: em vez de uma nota, o site sorteia uma sequência de notas próximas com relação harmônica e toca uma depois da outra (0,8 s entre elas).
+
+- **Material:** trechos de escala maior ou menor (graus vizinhos), ou arpejos de tríades maior/menor e de acordes com 7ª (dominante e menor). Podem ir subindo ou descendo e começar em qualquer grau ou inversão, sempre dentro da extensão do braço. A mesma sequência não sai duas vezes seguidas.
+- **Resposta:** clique as notas na ordem em que tocaram. A regra continua sendo a mesma altura (mesmo MIDI). Cada palpite aparece na hora, numerado, em verde ou vermelho.
+- **Resultado:** no fim aparecem as posições corretas numeradas, o nome do material (ex.: "arpejo de A menor, subindo") e os intervalos entre as notas.
+- **Dificuldade:** começa com 2 notas. **Aumentar dificuldade** soma uma nota (até 6) e **−** tira uma.
+- **Placar:** conta sequências inteiras (acerto só com todas as notas certas) e é separado do placar do modo básico.
+
+O sorteio fica em `src/game/sequence.ts`.
+
 A constante `MAX_FRET` em `src/fretboard/model.ts` controla quantas casas aparecem.

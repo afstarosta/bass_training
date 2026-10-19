@@ -159,16 +159,27 @@ export function Fretboard({ maxFret = MAX_FRET, markers, showNames, pulse, pulse
         ))}
 
         {/* Marcações de resposta */}
-        {markers.map(({ position, kind }) => {
+        {markers.map(({ position, kind, order }) => {
           const cx = g.cellCenterX(position.fret);
           const cy = g.stringY(position.string);
+          // Sem os nomes (rodada em andamento), o número da ordem vai dentro da bolinha;
+          // com os nomes revelados, a ordem vira um selo no canto.
+          const inner = showNames ? position.name : order;
           return (
-            <g key={`m-${kind}-${position.string}-${position.fret}`} className={`marker marker-${kind}`}>
+            <g key={`m-${kind}-${order ?? 0}-${position.string}-${position.fret}`} className={`marker marker-${kind}`}>
               <circle cx={cx} cy={cy} r={kind === 'equivalent' ? 14 : 16} />
-              {showNames && (
+              {inner !== undefined && (
                 <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central">
-                  {position.name}
+                  {inner}
                 </text>
+              )}
+              {showNames && order !== undefined && (
+                <g className="marker-order">
+                  <circle cx={cx + 14} cy={cy - 14} r={8} />
+                  <text x={cx + 14} y={cy - 14} textAnchor="middle" dominantBaseline="central">
+                    {order}
+                  </text>
+                </g>
               )}
             </g>
           );

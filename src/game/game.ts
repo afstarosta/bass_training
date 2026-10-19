@@ -1,18 +1,22 @@
 import {
   allPositions,
+  describeInterval,
   describePosition,
   equivalentPositions,
   samePosition,
   type Position,
 } from '../fretboard/model';
+import { MAX_SEQUENCE_LENGTH, MIN_SEQUENCE_LENGTH } from './sequence';
 
 /**
- * Estado do exercício.
- *  - idle: nenhuma nota sorteada ainda; cliques só tocam o som.
- *  - awaiting: nota sorteada, esperando o palpite.
- *  - answered: rodada encerrada; cliques só tocam o som até "Nova nota".
+ * Estado do exercício. O modo básico é uma "sequência" de uma nota só; o modo
+ * avançado sorteia de 2 a 6 notas, que o usuário clica na ordem em que tocaram.
+ *  - idle: nada sorteado; cliques só tocam o som.
+ *  - awaiting: esperando os palpites (um por nota, em ordem).
+ *  - answered: rodada encerrada; cliques só tocam o som até a próxima.
  */
 export type Phase = 'idle' | 'awaiting' | 'answered';
+export type Mode = 'basic' | 'advanced';
 
 export interface Score {
   hits: number;
@@ -20,31 +24,55 @@ export interface Score {
 }
 
 export interface GameState {
+  mode: Mode;
+  /** Notas por sequência no modo avançado. */
+  sequenceLength: number;
   phase: Phase;
-  target: Position | null;
-  guess: Position | null;
+  targets: Position[];
+  /** Descrição da sequência sorteada (só no modo avançado). */
+  label: string | null;
+  guesses: Position[];
+  /** Resultado de cada palpite, na mesma ordem de `guesses`. */
+  results: boolean[];
+  /** Resultado da rodada inteira (todas as notas certas); null até terminar. */
   correct: boolean | null;
-  score: Score;
+  /** Placar separado por modo: uma nota e sequências inteiras não se misturam. */
+  scores: Record<Mode, Score>;
 }
 
 export type GameAction =
-  | { type: 'new-note'; target: Position }
-  | { type: 'guess'; position: Position };
+  | { type: 'new-round'; targets: Position[]; label?: string | null }
+  | { type: 'guess'; position: Position }
+  | { type: 'set-mode'; mode: Mode }
+  | { type: 'set-length'; length: number };
+
+const emptyRound = {
+  phase: 'idle' as Phase,
+  targets: [] as Position[],
+  label: null,
+  guesses: [] as Position[],
+  results: [] as boolean[],
+  correct: null,
+};
 
 export const initialState: GameState = {
-  phase: 'idle',
-  target: null,
-  guess: null,
-  correct: null,
-  score: { hits: 0, misses: 0 },
+  mode: 'basic',
+  sequenceLength: MIN_SEQUENCE_LENGTH,
+  ...emptyRound,
+  scores: { basic: { hits: 0, misses: 0 }, advanced: { hits: 0, misses: 0 } },
 };
 
 /**
- * Regra de acerto da etapa 1: vale qualquer posição com a mesma altura
- * exata (mesmo número MIDI) da nota sorteada.
+ * Regra de acerto: vale qualquer posição com a mesma altura exata
+ * (mesmo número MIDI) da nota sorteada.
  */
 export function isCorrectGuess(target: Position, guess: Position): boolean {
   return target.midi === guess.midi;
+}
+
+/** Uma sequência só conta como acerto se todas as notas estiverem certas, na ordem. */
+export function isCorrectSequence(targets: readonly Position[], guesses: readonly Position[]): boolean {
+  return targets.length === guesses.length && targets.every((t, i) => isCorrectGuess(t, guesses[i]));
 }
 
 /**
@@ -62,25 +90,49 @@ export function pickRandomPosition(
   return pool[index];
 }
 
+export function clampLength(length: number): number {
+  return Math.max(MIN_SEQUENCE_LENGTH, Math.min(MAX_SEQUENCE_LENGTH, Math.round(length)));
+}
+
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
-    case 'new-note':
-      return { ...state, phase: 'awaiting', target: action.target, guess: null, correct: null };
+    case 'new-round':
+      if (action.targets.length === 0) return state;
+      return { ...state, ...emptyRound, phase: 'awaiting', targets: action.targets, label: action.label ?? null };
 
     case 'guess': {
       // Fora de uma rodada ativa, o clique é "modo livre": não altera o estado.
-      if (state.phase !== 'awaiting' || state.target === null) return state;
-      const correct = isCorrectGuess(state.target, action.position);
+      if (state.phase !== 'awaiting') return state;
+      const index = state.guesses.length;
+      const guesses = [...state.guesses, action.position];
+      const results = [...state.results, isCorrectGuess(state.targets[index], action.position)];
+      if (guesses.length < state.targets.length) return { ...state, guesses, results };
+
+      const correct = results.every(Boolean);
+      const score = state.scores[state.mode];
       return {
         ...state,
         phase: 'answered',
-        guess: action.position,
+        guesses,
+        results,
         correct,
-        score: {
-          hits: state.score.hits + (correct ? 1 : 0),
-          misses: state.score.misses + (correct ? 0 : 1),
+        scores: {
+          ...state.scores,
+          [state.mode]: { hits: score.hits + (correct ? 1 : 0), misses: score.misses + (correct ? 0 : 1) },
         },
       };
+    }
+
+    case 'set-mode':
+      if (action.mode === state.mode) return state;
+      return { ...state, ...emptyRound, mode: action.mode };
+
+    case 'set-length': {
+      const sequenceLength = clampLength(action.length);
+      if (sequenceLength === state.sequenceLength) return state;
+      // Mudar a dificuldade no meio de uma sequência encerra a rodada sem pontuar.
+      const round = state.mode === 'advanced' ? emptyRound : {};
+      return { ...state, ...round, sequenceLength };
     }
   }
 }
@@ -96,18 +148,35 @@ export type MarkerKind = 'target' | 'equivalent' | 'wrong' | 'guess';
 export interface Marker {
   position: Position;
   kind: MarkerKind;
+  /** Ordem na sequência (1, 2, 3…), só no modo avançado. */
+  order?: number;
 }
 
 /**
- * Marcações a desenhar no braço depois da resposta:
- *  - target: posição sorteada (verde);
- *  - guess: palpite correto numa posição equivalente (verde, contorno);
- *  - equivalent: outras posições com a mesma altura (secundário);
- *  - wrong: palpite errado (vermelho).
+ * Marcações no braço.
+ * Modo básico, depois da resposta: sorteada (verde), equivalentes (verde
+ * tracejado), palpite correto em posição equivalente (contorno verde),
+ * palpite errado (vermelho).
+ * Modo avançado: durante a rodada, cada palpite aparece numerado em verde ou
+ * vermelho; no fim, as posições sorteadas aparecem numeradas em verde.
  */
 export function revealMarkers(state: GameState, positions: readonly Position[] = allPositions()): Marker[] {
-  if (state.phase !== 'answered' || !state.target || !state.guess) return [];
-  const { target, guess } = state;
+  if (state.mode === 'advanced') {
+    const markers: Marker[] = [];
+    if (state.phase === 'answered') {
+      state.targets.forEach((t, i) => markers.push({ position: t, kind: 'target', order: i + 1 }));
+    }
+    state.guesses.forEach((g, i) => {
+      const right = state.results[i];
+      if (state.phase === 'answered' && right && samePosition(g, state.targets[i])) return;
+      markers.push({ position: g, kind: right ? 'guess' : 'wrong', order: i + 1 });
+    });
+    return markers;
+  }
+
+  if (state.phase !== 'answered') return [];
+  const target = state.targets[0];
+  const guess = state.guesses[0];
   const markers: Marker[] = [{ position: target, kind: 'target' }];
   for (const p of equivalentPositions(target, positions)) {
     markers.push({ position: p, kind: samePosition(p, guess) ? 'guess' : 'equivalent' });
@@ -127,8 +196,51 @@ function list(items: string[]): string {
   return `${items.slice(0, -1).join('; ')} e ${items[items.length - 1]}`;
 }
 
+/** "2ª maior ↑ · 2ª menor ↑" */
+export function describeIntervals(targets: readonly Position[]): string {
+  return targets
+    .slice(1)
+    .map((t, i) => describeInterval(targets[i].midi, t.midi))
+    .join(' · ');
+}
+
+function advancedFeedback(state: GameState): Feedback {
+  const { phase, targets, guesses, results, correct, label } = state;
+  const n = targets.length;
+
+  if (phase === 'idle') {
+    return { tone: 'neutral', message: `Clique em Nova sequência para ouvir ${state.sequenceLength} notas.` };
+  }
+  if (phase === 'awaiting') {
+    const k = guesses.length;
+    if (k === 0) return { tone: 'neutral', message: `Ouça a sequência e clique as ${n} notas na ordem em que tocaram.` };
+    const last = results[k - 1];
+    return {
+      tone: 'neutral',
+      message: `Nota ${k}: ${last ? 'certa' : 'errada'}. Agora a nota ${k + 1} de ${n}.`,
+    };
+  }
+
+  const names = targets.map((t) => t.name).join(' → ');
+  const about = label ? ` (${label})` : '';
+  const detail = `Intervalos: ${describeIntervals(targets)}.`;
+  if (correct) {
+    return { tone: 'success', message: `Acertou a sequência! ${names}${about}.`, detail };
+  }
+  const wrong = results.filter((r) => !r).length;
+  return {
+    tone: 'error',
+    message: `Errou ${wrong} de ${n} ${n === 1 ? 'nota' : 'notas'}. A sequência era ${names}${about}.`,
+    detail,
+  };
+}
+
 export function feedbackFor(state: GameState, positions: readonly Position[] = allPositions()): Feedback {
-  const { phase, target, guess, correct } = state;
+  if (state.mode === 'advanced') return advancedFeedback(state);
+
+  const { phase, correct } = state;
+  const target = state.targets[0];
+  const guess = state.guesses[0];
 
   if (phase === 'idle' || !target) {
     return { tone: 'neutral', message: 'Clique em Nova nota para começar.' };
@@ -138,9 +250,7 @@ export function feedbackFor(state: GameState, positions: readonly Position[] = a
   }
 
   const others = equivalentPositions(target, positions).filter((p) => !samePosition(p, guess));
-  const detail = others.length
-    ? `Mesma altura também em: ${list(others.map(describePosition))}.`
-    : undefined;
+  const detail = others.length ? `Mesma altura também em: ${list(others.map(describePosition))}.` : undefined;
 
   if (correct) {
     const via = samePosition(guess, target) ? '' : ` Você clicou em ${describePosition(guess)}, que tem a mesma altura.`;

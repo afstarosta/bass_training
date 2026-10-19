@@ -87,6 +87,44 @@ export function equivalentPositions(target: Position, positions: readonly Positi
   return positions.filter((p) => p.midi === target.midi && !samePosition(p, target));
 }
 
+/** Nota mais grave e mais aguda disponíveis no braço (MIDI). */
+export function midiRange(maxFret: number = MAX_FRET): { low: number; high: number } {
+  return { low: STRINGS[0].openMidi, high: STRINGS[STRINGS.length - 1].openMidi + maxFret };
+}
+
+const INTERVAL_NAMES = [
+  'uníssono',
+  '2ª menor',
+  '2ª maior',
+  '3ª menor',
+  '3ª maior',
+  '4ª justa',
+  'trítono',
+  '5ª justa',
+  '6ª menor',
+  '6ª maior',
+  '7ª menor',
+  '7ª maior',
+  'oitava',
+] as const;
+
+/** Nome do intervalo em semitons (sem sinal); acima da oitava, "oitava + …". */
+export function intervalName(semitones: number): string {
+  const n = Math.abs(Math.round(semitones));
+  if (n <= 12) return INTERVAL_NAMES[n];
+  const octaves = Math.floor(n / 12);
+  const rest = n % 12;
+  const base = octaves === 1 ? 'oitava' : `${octaves} oitavas`;
+  return rest === 0 ? base : `${base} + ${INTERVAL_NAMES[rest]}`;
+}
+
+/** "3ª menor ↑", "2ª maior ↓". */
+export function describeInterval(fromMidi: number, toMidi: number): string {
+  const diff = toMidi - fromMidi;
+  const arrow = diff > 0 ? ' ↑' : diff < 0 ? ' ↓' : '';
+  return `${intervalName(diff)}${arrow}`;
+}
+
 /** "corda E, casa 5" ou "corda A, solta". */
 export function describePosition(position: Position): string {
   const label = STRINGS[position.string].label;

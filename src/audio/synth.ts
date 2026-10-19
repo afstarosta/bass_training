@@ -12,6 +12,20 @@ const DECAY_S = 1.6;
 const STOP_AFTER_S = 1.9;
 const RELEASE_ON_CUT_S = 0.03;
 const SILENCE = 0.0001;
+const START_DELAY_S = 0.02;
+/** Intervalo entre o início de cada nota de uma sequência. */
+export const NOTE_SPACING_S = 0.8;
+
+/** Instantes (s) em que cada nota de uma sequência começa, a partir de 0. */
+export function sequenceOnsets(count: number, spacing: number = NOTE_SPACING_S): number[] {
+  return Array.from({ length: count }, (_, i) => i * spacing);
+}
+
+/** Nível do envelope `elapsed` segundos depois do pico (decaimento exponencial). */
+export function decayLevel(peak: number, elapsed: number): number {
+  const t = Math.min(1, Math.max(0, elapsed / DECAY_S));
+  return peak * (SILENCE / peak) ** t;
+}
 
 /**
  * Compensação de volume entre graves e agudos: frequências baixas soam mais
@@ -44,7 +58,7 @@ function getAudioContextCtor(): AudioContextCtor | null {
 export class BassSynth {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private current: Voice | null = null;
+  private voices = new Set<Voice>();
   private unlocked = false;
 
   get supported(): boolean {
@@ -76,22 +90,58 @@ export class BassSynth {
     return ctx.state === 'running';
   }
 
-  /** Toca uma nota (monofônico: corta a anterior com um release curto). */
+  /** Toca uma nota (monofônico: corta o que estiver soando com um release curto). */
   play(frequency: number): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    this.stopAll(ctx.currentTime);
+    this.scheduleVoice(ctx, frequency, ctx.currentTime + START_DELAY_S);
+  }
+
+  /**
+   * Toca uma sequência, uma nota depois da outra, agendada no relógio do
+   * áudio (sem setTimeout). Cada nota é abafada quando a seguinte começa,
+   * como faria o baixista; a última soa até o fim.
+   * Retorna a duração total em segundos.
+   */
+  playSequence(frequencies: readonly number[], spacing: number = NOTE_SPACING_S): number {
+    const ctx = this.ready();
+    if (!ctx || frequencies.length === 0) return 0;
+    this.stopAll(ctx.currentTime);
+    const start = ctx.currentTime + START_DELAY_S;
+    const onsets = sequenceOnsets(frequencies.length, spacing);
+    frequencies.forEach((f, i) => {
+      const next = onsets[i + 1];
+      this.scheduleVoice(ctx, f, start + onsets[i], next === undefined ? undefined : start + next);
+    });
+    return onsets[onsets.length - 1] + DECAY_S;
+  }
+
+  private ready(): AudioContext | null {
     const ctx = this.ensureContext();
-    if (!ctx || !this.master) return;
+    if (!ctx || !this.master) return null;
     if (ctx.state !== 'running') void ctx.resume();
+    return ctx;
+  }
 
-    this.cutCurrent(ctx.currentTime);
-
-    const t0 = ctx.currentTime + 0.01;
+  private scheduleVoice(ctx: AudioContext, frequency: number, t0: number, cutAt?: number): void {
     const peak = 0.55 * loudnessCompensation(frequency);
+    const tPeak = t0 + ATTACK_S;
 
     const output = ctx.createGain();
     output.gain.setValueAtTime(0, t0);
-    output.gain.linearRampToValueAtTime(peak, t0 + ATTACK_S);
-    output.gain.exponentialRampToValueAtTime(SILENCE, t0 + ATTACK_S + DECAY_S);
-    output.connect(this.master);
+    output.gain.linearRampToValueAtTime(peak, tPeak);
+    let end: number;
+    if (cutAt === undefined) {
+      output.gain.exponentialRampToValueAtTime(SILENCE, tPeak + DECAY_S);
+      end = t0 + STOP_AFTER_S;
+    } else {
+      // Segue a mesma curva de decaimento até o corte e então abafa rápido.
+      output.gain.exponentialRampToValueAtTime(decayLevel(peak, cutAt - tPeak), cutAt);
+      output.gain.exponentialRampToValueAtTime(SILENCE, cutAt + RELEASE_ON_CUT_S);
+      end = cutAt + RELEASE_ON_CUT_S + 0.02;
+    }
+    output.connect(this.master!);
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
@@ -109,7 +159,7 @@ export class BassSynth {
       g.gain.value = level;
       osc.connect(g).connect(dest);
       osc.start(t0);
-      osc.stop(t0 + STOP_AFTER_S);
+      osc.stop(end);
       sources.push(osc);
     };
 
@@ -121,28 +171,28 @@ export class BassSynth {
     addPartial('sine', 3, 0.12, output);
 
     const voice: Voice = { output, sources };
-    this.current = voice;
+    this.voices.add(voice);
     sources[0].onended = () => {
       output.disconnect();
-      if (this.current === voice) this.current = null;
+      this.voices.delete(voice);
     };
   }
 
-  private cutCurrent(now: number): void {
-    const voice = this.current;
-    if (!voice) return;
-    const g = voice.output.gain;
-    g.cancelScheduledValues(now);
-    g.setValueAtTime(Math.max(g.value, SILENCE), now);
-    g.exponentialRampToValueAtTime(SILENCE, now + RELEASE_ON_CUT_S);
-    for (const osc of voice.sources) {
-      try {
-        osc.stop(now + RELEASE_ON_CUT_S + 0.01);
-      } catch {
-        /* já parado */
+  /** Abafa tudo que está soando ou agendado (inclusive notas futuras de uma sequência). */
+  private stopAll(now: number): void {
+    for (const voice of this.voices) {
+      const g = voice.output.gain;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(Math.max(g.value, SILENCE), now);
+      g.exponentialRampToValueAtTime(SILENCE, now + RELEASE_ON_CUT_S);
+      for (const osc of voice.sources) {
+        try {
+          osc.stop(now + RELEASE_ON_CUT_S + 0.01);
+        } catch {
+          /* já parado */
+        }
       }
     }
-    this.current = null;
   }
 
   private ensureContext(): AudioContext | null {

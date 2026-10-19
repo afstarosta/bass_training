@@ -125,6 +125,18 @@
   stroke-width: 3;
 }
 
+.fretboard .marker .marker-order circle {
+  fill: var(--bg);
+  stroke: var(--text);
+  stroke-width: 1.5;
+  stroke-dasharray: none;
+}
+
+.fretboard .marker .marker-order text {
+  font: 700 10px var(--font-ui);
+  fill: var(--text);
+}
+
 .fretboard .pulse {
   fill: none;
   stroke: var(--accent);

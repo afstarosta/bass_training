@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterStartCutoff, loudnessCompensation } from './synth';
+import { decayLevel, filterStartCutoff, loudnessCompensation, sequenceOnsets } from './synth';
 import { frequencyAt } from '../fretboard/model';
 
 describe('síntese', () => {
@@ -18,5 +18,17 @@ describe('síntese', () => {
   it('corte inicial do filtro acima da fundamental e limitado', () => {
     expect(filterStartCutoff(41.2)).toBeGreaterThan(41.2 * 4);
     expect(filterStartCutoff(1000)).toBe(5000);
+  });
+});
+
+describe('sequências', () => {
+  it('notas começam a intervalos regulares', () => {
+    expect(sequenceOnsets(3, 0.8)).toEqual([0, 0.8, 1.6]);
+  });
+
+  it('o envelope decai do pico até o silêncio', () => {
+    expect(decayLevel(0.5, 0)).toBeCloseTo(0.5, 6);
+    expect(decayLevel(0.5, 0.8)).toBeLessThan(0.5);
+    expect(decayLevel(0.5, 100)).toBeCloseTo(0.0001, 6);
   });
 });
