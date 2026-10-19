@@ -163,7 +163,26 @@ h1 {
   outline-offset: 2px;
 }
 
+.steppers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+}
+
 .stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stepper-label {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.stepper-controls {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -174,12 +193,18 @@ h1 {
   text-align: center;
   color: var(--muted);
   font-size: 14px;
+  white-space: nowrap;
 }
 
 .stepper-value strong {
   color: var(--text);
   font-size: 20px;
   font-variant-numeric: tabular-nums;
+}
+
+.stepper-hint {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .btn-small {
@@ -201,7 +226,8 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
+  /* Mesma altura antes e depois de mostrar os nomes, para o braço não pular. */
+  min-height: 46px;
   padding: 6px 12px 6px 6px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -362,7 +388,8 @@ h1 {
   border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.18);
-  min-height: 52px;
+  /* Reserva espaço para mensagem + detalhe + dica: o braço não pula ao revelar a resposta. */
+  min-height: 98px;
 }
 
 .feedback p {
@@ -472,8 +499,11 @@ h1 {
     font-size: 14px;
     white-space: nowrap;
   }
+  .steppers,
   .stepper {
     width: 100%;
+  }
+  .stepper-controls {
     gap: 8px;
   }
   .stepper-value {

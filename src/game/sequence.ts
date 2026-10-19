@@ -142,20 +142,129 @@ export function fingerSequence(midis: readonly number[], positions: readonly Pos
   return result;
 }
 
+/**
+ * Complexidade (independente do número de notas):
+ *  1. Vizinhas: graus vizinhos de escala ou notas vizinhas de um arpejo, numa direção.
+ *  2. Saltos: notas de uma escala sorteada, pulando 2 a 3 graus (3ªs e 4ªs), em qualquer direção.
+ *  3. Saltos grandes: pulando de 2 a 7 graus (de 3ª até oitava).
+ *  4. Graves: saltos de 2 a 5 graus restritos ao registro grave (E1 a E2).
+ */
+export interface ComplexityLevel {
+  level: number;
+  name: string;
+  description: string;
+  /** Saltos permitidos, em graus da escala (1 = grau vizinho). Nível 1 usa os padrões de escala/arpejo. */
+  degreeLeaps?: readonly number[];
+  /** Limite superior do registro, em MIDI (só no nível dos graves). */
+  highestMidi?: number;
+}
+
+export const COMPLEXITY_LEVELS: readonly ComplexityLevel[] = [
+  { level: 1, name: 'Vizinhas', description: 'graus vizinhos de escala e arpejos' },
+  { level: 2, name: 'Saltos', description: 'saltos de 3ª e 4ª dentro de uma escala', degreeLeaps: [2, 3] },
+  {
+    level: 3,
+    name: 'Saltos grandes',
+    description: 'saltos de 3ª até a oitava dentro de uma escala',
+    degreeLeaps: [2, 3, 4, 5, 6, 7],
+  },
+  {
+    level: 4,
+    name: 'Graves',
+    description: 'saltos no registro grave (E1 a E2)',
+    degreeLeaps: [2, 3, 4, 5],
+    highestMidi: 40,
+  },
+];
+
+export const MIN_COMPLEXITY = 1;
+export const MAX_COMPLEXITY = COMPLEXITY_LEVELS.length;
+
+export function complexityLevel(level: number): ComplexityLevel {
+  const clamped = Math.max(MIN_COMPLEXITY, Math.min(MAX_COMPLEXITY, Math.round(level)));
+  return COMPLEXITY_LEVELS[clamped - 1];
+}
+
+/** Alturas (MIDI) de uma escala dentro de [low, high], em ordem crescente. */
+export function scaleNotesInRange(scale: ScaleDef, rootPitchClass: number, low: number, high: number): number[] {
+  const pitchClasses = new Set<number>();
+  let pc = rootPitchClass;
+  for (const step of scale.steps) {
+    pitchClasses.add(((pc % 12) + 12) % 12);
+    pc += step;
+  }
+  const notes: number[] = [];
+  for (let m = low; m <= high; m++) if (pitchClasses.has(m % 12)) notes.push(m);
+  return notes;
+}
+
+/**
+ * Melodia com saltos dentro de uma escala sorteada: cada nota pula um número
+ * de graus permitido pelo nível, para cima ou para baixo, sem sair do registro.
+ */
+export function leapingMelody(
+  scaleNotes: readonly number[],
+  length: number,
+  leaps: readonly number[],
+  random: Random,
+): number[] | null {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    let index = randomInt(0, scaleNotes.length - 1, random);
+    const indices = [index];
+    let ok = true;
+    for (let i = 1; i < length && ok; i++) {
+      const options: number[] = [];
+      for (const leap of leaps) {
+        if (index + leap < scaleNotes.length) options.push(index + leap);
+        if (index - leap >= 0) options.push(index - leap);
+      }
+      if (options.length === 0) ok = false;
+      else {
+        index = pick(options, random);
+        indices.push(index);
+      }
+    }
+    if (ok) return indices.map((i) => scaleNotes[i]);
+  }
+  return null;
+}
+
 export interface GenerateOptions {
   /** Alturas da sequência anterior, para não repetir a mesma. */
   previous?: readonly number[] | null;
   random?: Random;
   maxFret?: number;
+  /** Nível de complexidade, de 1 a 4 (padrão 1). */
+  complexity?: number;
 }
 
 export function generateSequence(length: number, options: GenerateOptions = {}): Sequence {
-  const { previous = null, random = Math.random, maxFret = MAX_FRET } = options;
+  const { previous = null, random = Math.random, maxFret = MAX_FRET, complexity = MIN_COMPLEXITY } = options;
   if (!Number.isInteger(length) || length < MIN_SEQUENCE_LENGTH || length > MAX_SEQUENCE_LENGTH) {
     throw new RangeError(`Tamanho de sequência inválido: ${length}`);
   }
   const { low, high } = midiRange(maxFret);
   const positions = allPositions(maxFret);
+  const level = complexityLevel(complexity);
+  const isRepeat = (midis: number[]) =>
+    previous !== null && previous.length === midis.length && previous.every((m, i) => m === midis[i]);
+
+  if (level.degreeLeaps) {
+    const top = Math.min(high, level.highestMidi ?? high);
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const scale = pick(SCALES, random);
+      const rootPc = randomInt(0, 11, random);
+      const notes = scaleNotesInRange(scale, rootPc, low, top);
+      const midis = leapingMelody(notes, length, level.degreeLeaps, random);
+      if (!midis || isRepeat(midis)) continue;
+      const register = level.highestMidi ? ', no grave' : '';
+      return {
+        notes: fingerSequence(midis, positions, random),
+        label: `notas da escala de ${NOTE_NAMES[rootPc]} ${scale.name}, com saltos${register}`,
+      };
+    }
+    throw new Error('Não foi possível sortear uma sequência');
+  }
 
   for (let attempt = 0; attempt < 100; attempt++) {
     const pattern = randomPattern(length, random);
@@ -167,7 +276,7 @@ export function generateSequence(length: number, options: GenerateOptions = {}):
     if (rootHigh < rootLow) continue;
     const root = randomInt(rootLow, rootHigh, random);
     const midis = pattern.offsets.map((o) => root + o);
-    if (previous && previous.length === midis.length && previous.every((m, i) => m === midis[i])) continue;
+    if (isRepeat(midis)) continue;
     return { notes: fingerSequence(midis, positions, random), label: describePattern(pattern, root) };
   }
   throw new Error('Não foi possível sortear uma sequência');

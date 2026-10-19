@@ -11,7 +11,14 @@ import {
   revealMarkers,
   type GameState,
 } from './game/game';
-import { MAX_SEQUENCE_LENGTH, MIN_SEQUENCE_LENGTH, generateSequence } from './game/sequence';
+import {
+  MAX_COMPLEXITY,
+  MAX_SEQUENCE_LENGTH,
+  MIN_COMPLEXITY,
+  MIN_SEQUENCE_LENGTH,
+  complexityLevel,
+  generateSequence,
+} from './game/sequence';
 
 export default function App() {
   const [state, dispatch] = useReducer(gameReducer, initialState);
@@ -19,6 +26,7 @@ export default function App() {
   const synthRef = useRef<BassSynth | null>(null);
   const positions = useMemo(() => allPositions(MAX_FRET), []);
   const advanced = state.mode === 'advanced';
+  const level = complexityLevel(state.complexity);
 
   const synth = () => (synthRef.current ??= new BassSynth());
 
@@ -34,7 +42,7 @@ export default function App() {
     setPulse(null);
     if (advanced) {
       const previous = state.targets.length ? state.targets.map((t) => t.midi) : null;
-      const seq = generateSequence(state.sequenceLength, { previous });
+      const seq = generateSequence(state.sequenceLength, { previous, complexity: state.complexity });
       dispatch({ type: 'new-round', targets: seq.notes, label: seq.label });
       play(seq.notes);
     } else {
@@ -76,7 +84,7 @@ export default function App() {
         <h1>{advanced ? 'Que sequência foi essa?' : 'Onde está essa nota?'}</h1>
         <p className="lede">
           {advanced
-            ? 'Ouça a sequência — um trecho de escala ou arpejo — e clique as notas no braço na ordem em que tocaram. Vale qualquer posição com a mesma altura.'
+            ? 'Ouça a sequência e clique as notas no braço na ordem em que tocaram. Vale qualquer posição com a mesma altura. Ajuste quantas notas tocam (dificuldade) e quão longe elas saltam (complexidade).'
             : 'Ouça a nota sorteada e clique no braço onde você acha que ela está. Vale qualquer posição com a mesma altura.'}
         </p>
       </header>
@@ -98,27 +106,26 @@ export default function App() {
             </button>
 
             {advanced && (
-              <div className="stepper" role="group" aria-label="Dificuldade">
-                <button
-                  type="button"
-                  className="btn btn-small"
-                  onClick={() => dispatch({ type: 'set-length', length: state.sequenceLength - 1 })}
-                  disabled={state.sequenceLength <= MIN_SEQUENCE_LENGTH}
-                  aria-label="Diminuir dificuldade"
-                >
-                  −
-                </button>
-                <span className="stepper-value" aria-live="polite">
-                  <strong>{state.sequenceLength}</strong> notas
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-small"
-                  onClick={() => dispatch({ type: 'set-length', length: state.sequenceLength + 1 })}
-                  disabled={state.sequenceLength >= MAX_SEQUENCE_LENGTH}
-                >
-                  + Aumentar dificuldade
-                </button>
+              <div className="steppers">
+                <Stepper
+                  label="Dificuldade"
+                  value={state.sequenceLength}
+                  unit="notas"
+                  min={MIN_SEQUENCE_LENGTH}
+                  max={MAX_SEQUENCE_LENGTH}
+                  increaseText="Aumentar dificuldade"
+                  onChange={(length) => dispatch({ type: 'set-length', length })}
+                />
+                <Stepper
+                  label="Complexidade"
+                  value={state.complexity}
+                  unit={level.name}
+                  hint={level.description}
+                  min={MIN_COMPLEXITY}
+                  max={MAX_COMPLEXITY}
+                  increaseText="Aumentar complexidade"
+                  onChange={(complexity) => dispatch({ type: 'set-complexity', complexity })}
+                />
               </div>
             )}
           </div>
@@ -223,5 +230,44 @@ function SequenceStrip({ state }: { state: GameState }) {
         );
       })}
     </ol>
+  );
+}
+
+interface StepperProps {
+  label: string;
+  value: number;
+  /** Texto ao lado do número: "notas", ou o nome do nível. */
+  unit: string;
+  hint?: string;
+  min: number;
+  max: number;
+  increaseText: string;
+  onChange: (value: number) => void;
+}
+
+/** Medidor com − / número / + (usado para dificuldade e complexidade). */
+function Stepper({ label, value, unit, hint, min, max, increaseText, onChange }: StepperProps) {
+  return (
+    <div className="stepper" role="group" aria-label={label}>
+      <span className="stepper-label">{label}</span>
+      <div className="stepper-controls">
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={() => onChange(value - 1)}
+          disabled={value <= min}
+          aria-label={`Diminuir ${label.toLowerCase()}`}
+        >
+          −
+        </button>
+        <span className="stepper-value" aria-live="polite" title={hint}>
+          <strong>{value}</strong> {unit}
+        </span>
+        <button type="button" className="btn btn-small" onClick={() => onChange(value + 1)} disabled={value >= max}>
+          + {increaseText}
+        </button>
+      </div>
+      {hint && <span className="stepper-hint">{hint}</span>}
+    </div>
   );
 }

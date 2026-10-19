@@ -195,6 +195,26 @@ describe('modo avançado', () => {
     expect(s.sequenceLength).toBe(6);
   });
 
+  it('complexidade começa em 1, vai até 4 e muda sem afetar o tamanho', () => {
+    let s = advanced(3);
+    expect(s.complexity).toBe(1);
+    s = gameReducer(s, { type: 'set-complexity', complexity: 2 });
+    expect(s.complexity).toBe(2);
+    expect(s.sequenceLength).toBe(3);
+    s = gameReducer(s, { type: 'set-complexity', complexity: 99 });
+    expect(s.complexity).toBe(4);
+    s = gameReducer(s, { type: 'set-complexity', complexity: 0 });
+    expect(s.complexity).toBe(1);
+  });
+
+  it('mudar a complexidade no meio da sequência descarta a rodada sem pontuar', () => {
+    let s = gameReducer(advanced(3), { type: 'new-round', targets: abc });
+    s = gameReducer(s, { type: 'guess', position: abc[0] });
+    s = gameReducer(s, { type: 'set-complexity', complexity: 3 });
+    expect(s.phase).toBe('idle');
+    expect(s.scores.advanced).toEqual({ hits: 0, misses: 0 });
+  });
+
   it('palpites ficam pendentes até completar a sequência', () => {
     let s = gameReducer(advanced(3), { type: 'new-round', targets: abc });
     s = gameReducer(s, { type: 'guess', position: abc[0] });

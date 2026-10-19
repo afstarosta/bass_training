@@ -6,7 +6,7 @@ import {
   samePosition,
   type Position,
 } from '../fretboard/model';
-import { MAX_SEQUENCE_LENGTH, MIN_SEQUENCE_LENGTH } from './sequence';
+import { MAX_SEQUENCE_LENGTH, MIN_SEQUENCE_LENGTH, MIN_COMPLEXITY, complexityLevel } from './sequence';
 
 /**
  * Estado do exercício. O modo básico é uma "sequência" de uma nota só; o modo
@@ -27,6 +27,8 @@ export interface GameState {
   mode: Mode;
   /** Notas por sequência no modo avançado. */
   sequenceLength: number;
+  /** Complexidade das sequências no modo avançado (1 a 4). */
+  complexity: number;
   phase: Phase;
   targets: Position[];
   /** Descrição da sequência sorteada (só no modo avançado). */
@@ -44,7 +46,8 @@ export type GameAction =
   | { type: 'new-round'; targets: Position[]; label?: string | null }
   | { type: 'guess'; position: Position }
   | { type: 'set-mode'; mode: Mode }
-  | { type: 'set-length'; length: number };
+  | { type: 'set-length'; length: number }
+  | { type: 'set-complexity'; complexity: number };
 
 const emptyRound = {
   phase: 'idle' as Phase,
@@ -58,6 +61,7 @@ const emptyRound = {
 export const initialState: GameState = {
   mode: 'basic',
   sequenceLength: MIN_SEQUENCE_LENGTH,
+  complexity: MIN_COMPLEXITY,
   ...emptyRound,
   scores: { basic: { hits: 0, misses: 0 }, advanced: { hits: 0, misses: 0 } },
 };
@@ -133,6 +137,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       // Mudar a dificuldade no meio de uma sequência encerra a rodada sem pontuar.
       const round = state.mode === 'advanced' ? emptyRound : {};
       return { ...state, ...round, sequenceLength };
+    }
+
+    case 'set-complexity': {
+      const complexity = complexityLevel(action.complexity).level;
+      if (complexity === state.complexity) return state;
+      // Como a dificuldade, mudar no meio de uma sequência descarta a rodada.
+      const round = state.mode === 'advanced' ? emptyRound : {};
+      return { ...state, ...round, complexity };
     }
   }
 }

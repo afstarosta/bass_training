@@ -41,6 +41,14 @@ Ligue **Modo avançado** para treinar intervalos: em vez de uma nota, o site sor
 - **Resposta:** clique as notas na ordem em que tocaram. A regra continua sendo a mesma altura (mesmo MIDI). Cada palpite aparece na hora, numerado, em verde ou vermelho.
 - **Resultado:** no fim aparecem as posições corretas numeradas, o nome do material (ex.: "arpejo de A menor, subindo") e os intervalos entre as notas.
 - **Dificuldade:** começa com 2 notas. **Aumentar dificuldade** soma uma nota (até 6) e **−** tira uma.
+- **Complexidade:** define o quanto as notas saltam, independente da quantidade de notas.
+
+  | Nível | Nome | O que sorteia |
+  | --- | --- | --- |
+  | 1 | Vizinhas | graus vizinhos de escala ou arpejos, numa direção (padrão) |
+  | 2 | Saltos | notas de uma escala maior/menor sorteada, com saltos de 3ª e 4ª, subindo e descendo |
+  | 3 | Saltos grandes | idem, com saltos de 3ª até a oitava |
+  | 4 | Graves | saltos de 3ª a 6ª restritos ao registro grave (E1 a E2), onde é mais difícil perceber a altura |
 - **Placar:** conta sequências inteiras (acerto só com todas as notas certas) e é separado do placar do modo básico.
 
 O sorteio fica em `src/game/sequence.ts`.
